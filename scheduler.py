@@ -1,23 +1,20 @@
 import datetime
 import json
-import logging
 import os
 import threading
 from datetime import datetime
 from queue import Queue
 
+from config import SchedulerConfig
 from job import Job
-
-logging.basicConfig(filename='scheduler_log.log',
-                    filemode='a',
-                    format='%(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO)
-logger = logging.getLogger('mylog')
+from logging_setting import logger
 
 
 class Scheduler:
-    def __init__(self, pool_size: int = 10):
-        self.pool_size = pool_size
+    def __init__(self, pool_size: int = None, statement_path: str = None):
+        config = SchedulerConfig()
+        self.pool_size = pool_size or config.pool_size
+        self.statement_path = statement_path or config.statement_path
         self.jobs: list = []
         self.waiting_jobs: list = []
         self.completed_jobs: list = []
@@ -26,7 +23,7 @@ class Scheduler:
         self._stopped: bool = False
         self.functions_dict: dict = {}
 
-    def schedule(self, job):
+    def schedule(self, job: Job):
         if job.function_name not in self.functions_dict:
             self.functions_dict[job.function_name] = job.function
         if self.queue_size < self.pool_size:
@@ -50,8 +47,18 @@ class Scheduler:
                 continue
             try:
                 job.run()
-                job.status = 'waiting'
-                self.schedule(job)
+                if job.status != 'error':
+                    self.schedule(job)
+                elif job.status == 'error':
+                    if job.restarts == 0:
+                        self.completed_jobs.append(job)
+                        continue
+                    while job.restarts > 0 and job.status == 'error':
+                        job.restarts -= 1
+                        job._run()
+                        if job.status != 'error':
+                            self.schedule(job)
+                            break
             except StopIteration:
                 self.completed_jobs.append(job)
                 continue
@@ -74,7 +81,9 @@ class Scheduler:
         self._run()
 
     def save_statement(self):
-        with open('scheduler_state.json', 'w') as f:
+        # В данном случае проверка на доступность statement_path не нужна,
+        # так как здесь этот файл будет создаваться.
+        with open(self.statement_path, 'w') as f:
             state = {
                 'pool_size': self.pool_size,
                 'jobs': [job.to_dict() for job in self.jobs],
@@ -86,7 +95,9 @@ class Scheduler:
             json.dump(state, f)
 
     def load_statement(self):
-        with open('scheduler_state.json', 'r') as f:
+        if not os.path.isfile(self.statement_path):
+            raise FileNotFoundError(f'No such file: "{self.statement_path}"')
+        with open(self.statement_path, 'r') as f:
             state = json.load(f)
         self.pool_size = state['pool_size']
         self.jobs = [Job.from_dict(job_dict, self.functions_dict) for job_dict
@@ -99,4 +110,4 @@ class Scheduler:
         for job in self.jobs + self.waiting_jobs:
             if job.status in ('waiting', 'running', 'pending'):
                 self.queue.put(job)
-        os.remove('scheduler_state.json')
+        os.remove(self.statement_path)

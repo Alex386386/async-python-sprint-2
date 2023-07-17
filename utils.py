@@ -41,6 +41,43 @@ def test_function_3():
     os.remove('data.csv')
 
 
+def test_function_6(a):
+    a = a * 4
+    with open('data.csv', mode='w') as f:
+        writer = csv.writer(f)
+        writer.writerow([a])
+
+
+def test_function_7():
+    with open('data.csv', mode='r') as f:
+        reader = csv.reader(f)
+        a = next(reader)[0]
+    a = int(a) * 6
+    with open('data.csv', mode='a') as f:
+        writer = csv.writer(f)
+        writer.writerow([a])
+
+
+def test_function_8():
+    with open('data.csv', mode='r') as f:
+        reader = csv.reader(f)
+        lines = list(reader)
+        a = lines[-1][0]
+    a = int(a) / 6.5
+    with open('data.csv', mode='a') as f:
+        writer = csv.writer(f)
+        writer.writerow([a])
+    os.remove('data.csv')
+
+
+def test_function_4(value: int):
+    return value * 2
+
+
+def test_function_5():
+    raise Exception('Warning!')
+
+
 def get_list_by_url(url):
     response = requests.get(url)
     data = response.json()
